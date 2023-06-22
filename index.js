@@ -1,11 +1,11 @@
 // Menambahkan dependencies
-const { default: makeWASocket, DisconnectReason, useSingleFileAuthState } = require('@adiwajshing/baileys');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const Boom = require('@hapi/boom');
-const { state, saveState } = useSingleFileAuthState('./login.json');
 
 // fungsi utama WA BOT
 async function connectToWhatsapp() {
-  // Membuat objek agent proxy
+  const { state, saveCreds } = await useMultiFileAuthState('Auth_info_logins');
+  // console.log(state);
 
   // buat koneksi baru
   const sock = makeWASocket({
@@ -14,10 +14,11 @@ async function connectToWhatsapp() {
     defaultQueryTimeoutMs: undefined,
   });
 
-  sock.ev.on('connection.update', (update) => {
+  // Handler untuk event 'connection.update'
+  function handleConnectionUpdate(update) {
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
-      const reconnecting = (lastDisconnect.error = Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+      const reconnecting = (lastDisconnect.error === Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
       console.log(`Koneksi terputus karena ${lastDisconnect.error}, Hubungkan kembali! ${reconnecting}`);
       if (reconnecting) {
         connectToWhatsapp();
@@ -25,15 +26,20 @@ async function connectToWhatsapp() {
     } else if (connection === 'open') {
       console.log('Terhubung!');
     }
-  });
+  }
 
-  sock.ev.on('creds.update', saveState);
+  // Menambahkan listener untuk event 'connection.update'
+  sock.ev.on('connection.update', handleConnectionUpdate);
 
-  //Fungsi untuk memantau pesan masuk
+  await sock.ev.on('creds.update', saveCreds);
+
+  // Fungsi untuk memantau pesan masuk
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     console.log(`Tipe pesan : ${type}`);
     console.log(messages);
   });
 }
 
-connectToWhatsapp();
+connectToWhatsapp().catch((error) => {
+  console.log(error);
+});
